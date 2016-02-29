@@ -24,6 +24,7 @@ aws = AWSCore.aws_config(region="ap-southeast-2")
 #-------------------------------------------------------------------------------
 
 db = "aws_sdb_jl_test_domain"
+simpledb = SimpleDB(aws, db)
 
 if db in sdb_list_domains(aws)
     sdb_delete_domain(aws, db)
@@ -45,9 +46,10 @@ data = Dict("key1" => Pair["a1" => "1"],
             "key3" => Pair["a1" => "31", "a2" => "32", "a3" => "33"])
 
 for (k, a) in data
-    sdb_put(aws, db, k, a)
+    simpledb[k] = a
 end
 
+sleep(1)
 while length(collect(sdb_select(aws, "select itemName() from $db"))) < 3
     println("Waiting for put...")
     sleep(1)
@@ -57,8 +59,13 @@ end
 @test sdb_get(aws, db, "key2") == data["key2"]
 @test sdb_get(aws, db, "key3") == data["key3"]
 
+@test simpledb["key1"] == data["key1"]
+@test simpledb["key2"] == data["key2"]
+@test simpledb["key3"] == data["key3"]
+
 sdb_put(aws, db, "key1", Pair["a1" => 2], replace=false)
 
+sleep(1)
 while length(sdb_get(aws, db, "key1")) < 2
     println("Waiting for put...")
     sleep(1)

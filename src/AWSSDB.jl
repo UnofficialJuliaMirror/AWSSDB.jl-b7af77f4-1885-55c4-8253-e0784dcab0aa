@@ -14,13 +14,26 @@ module AWSSDB
 
 
 export sdb_list_domains, sdb_create_domain, sdb_delete_domain,
-       sdb_delete_item, sdb_put, sdb_get, sdb_select
-
+       sdb_delete_item, sdb_put, sdb_get, sdb_select,
+       SimpleDB
 
 
 using AWSCore
 using SymDict
 
+
+type SimpleDB <:Associative{AbstractString,AbstractString}
+    aws
+    domain
+end
+
+
+function Base.get(db::SimpleDB, key::AbstractString, default)
+    r = sdb_get(db, key)
+    return r == nothing ? default : r
+end
+
+Base.setindex!(db::SimpleDB, v, key::AbstractString) = sdb_put(db, key, v)
 
 
 function sdb(aws, action, query=StringDict())
@@ -65,6 +78,8 @@ function sdb_put(aws, DomainName, ItemName, dict; replace=true)
     sdb(aws, "PutAttributes", @SymDict(DomainName, ItemName, attrs...))
 end
 
+sdb_put(db::SimpleDB, ItemName, dict) = sdb_put(db.aws, db.domain, ItemName, dict)
+
 function sdb_attributes(r)
     return Pair[i["Name"] => i["Value"] for i in (isa(r, Vector) ? r : [r])]
 end
@@ -87,6 +102,8 @@ function sdb_get(aws, DomainName, ItemName; attribute="")
 
     return sdb_attributes(r)
 end
+
+sdb_get(db::SimpleDB, ItemName) = sdb_get(db.aws, db.domain, ItemName)
 
 
 type SDBSelectItr
