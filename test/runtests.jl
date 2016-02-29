@@ -72,6 +72,15 @@ end
          "key3" => Pair["a1" => "31"])
 
 
+sdb_delete_item(aws, db, "key1")
+sdb_delete_item(aws, db, "key2")
+sdb_delete_item(aws, db, "key3")
+
+while length(collect(sdb_select(aws, "select itemName() from $db"))) > 0
+    println("Waiting for delete...")
+    sleep(1)
+end
+
 
 #==============================================================================#
 # End of file.

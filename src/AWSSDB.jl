@@ -138,11 +138,12 @@ function sdb_select_token(aws, SelectExpression, NextToken="")
 
     r = sdb(aws, "Select", query)
     r = r["SelectResult"]
-    NextToken = get(r, "NextToken", "")
 
     if r == ""
-        return ([], NextToken)
+        return ([], "")
     end
+
+    NextToken = get(r, "NextToken", "")
 
     r = r["Item"]
 
