@@ -19,8 +19,12 @@ export sdb_list_domains, sdb_create_domain, sdb_delete_domain,
 
 
 using AWSCore
+using XMLDict
 using SymDict
 
+
+
+# Associative get/setindex! interface...
 
 type SimpleDB <:Associative{AbstractString,AbstractString}
     aws
@@ -36,14 +40,18 @@ end
 Base.setindex!(db::SimpleDB, v, key::AbstractString) = sdb_put(db, key, v)
 
 
+
+# SDB API Interface...
+
 function sdb(aws, action, query=StringDict())
-    query["Action"] = action 
+    query["Action"] = action
     do_request(post_request(aws, "sdb", "2009-04-15", query))
 end
 
 sdb(aws, action, args::SymbolDict) = sdb(aws, action, StringDict(args))
 
 sdb(aws, action; args...) = sdb(aws, action, StringDict(args))
+
 
 
 function sdb_list_domains(aws)
@@ -80,8 +88,52 @@ end
 
 sdb_put(db::SimpleDB, ItemName, dict) = sdb_put(db.aws, db.domain, ItemName, dict)
 
-function sdb_attributes(r)
-    return Pair[i["Name"] => i["Value"] for i in (isa(r, Vector) ? r : [r])]
+
+typealias SDBAttribute Pair{UTF8String,Union{UTF8String,Vector{UTF8String}}}
+typealias SDBItem Union{UTF8String,Pair{UTF8String,Vector{SDBAttribute}}}
+
+
+# Convert XML attribute vector "v" to Vector{Pair}...
+
+function sdb_attributes(v, order=nothing)
+
+    v = isa(v, Vector) ? v : [v]
+
+    if order == nothing
+        return [SDBAttribute(utf8(i["Name"]), utf8(i["Value"])) for i in v]
+    else
+
+        # Build dict of attribute values...
+        d = Dict{UTF8String,Union{UTF8String,Vector{UTF8String}}}()
+        for i in v
+
+            # Get Attribute name and value...
+            attribute = utf8(i["Name"])
+            value = i["Value"]
+
+            # Decode base64 values...
+            if isa(value, XMLDict.XMLDictElement)
+                if get(value, :encoding, nothing) == "base64"
+                    value = base64decode(value[""])
+                end
+            end
+            value = utf8(value)
+
+            # Build vector for multi-valued attributes...
+            if haskey(d, attribute)
+                if isa(d[attribute], Vector{UTF8String})
+                    push!(d[attribute], value)
+                else
+                    d[attribute] = UTF8String[d[attribute], value]
+                end
+            else
+                d[attribute] = value
+            end
+        end
+
+        # Return ordered Vector of Pairs...
+        return [SDBAttribute(a, get(d, a, utf8(""))) for a in order]
+    end
 end
 
 
@@ -109,19 +161,42 @@ sdb_get(db::SimpleDB, ItemName) = sdb_get(db.aws, db.domain, ItemName)
 type SDBSelectItr
     aws
     SelectExpression
+    attributes
     NextToken::ASCIIString
     result
 end
 
 
 function sdb_select(aws, SelectExpression; NextToken="")
-    return SDBSelectItr(aws, SelectExpression, NextToken, nothing)
+    return SDBSelectItr(aws, SelectExpression, nothing, NextToken, nothing)
 end
+
+
+function sdb_select(aws, domain::AbstractString,
+                         attributes::Vector,
+                         condition::AbstractString="";
+                         NextToken="")
+
+    SelectExpression = """
+                       select $(join(["`$a`" for a in attributes], ", "))
+                       from `$domain`
+                       $condition
+                       """
+
+    return SDBSelectItr(aws, SelectExpression, attributes, NextToken, nothing)
+end
+
+
+# Iterator interface...
+
+Base.eltype(::Type{SDBSelectItr}) = SDBItem
 
 
 function Base.start(itr::SDBSelectItr)
 
-    itr.result, itr.NextToken = sdb_select_token(itr.aws, itr.SelectExpression)
+    itr.result, itr.NextToken = _sdb_select(itr.aws,
+                                            itr.SelectExpression,
+                                            itr.attributes)
     return start(itr.result)
 end
 
@@ -131,7 +206,10 @@ function Base.next(itr::SDBSelectItr, state)
     if done(itr.result, state)
 
         itr.result, itr.NextToken =
-            sdb_select_token(itr.aws, itr.SelectExpression, itr.NextToken)
+            _sdb_select(itr.aws,
+                        itr.SelectExpression,
+                        itr.attributes,
+                        itr.NextToken)
         state = start(itr.result)
     end
 
@@ -145,10 +223,10 @@ function Base.done(itr::SDBSelectItr, state)
 end
 
 
-function sdb_select_token(aws, SelectExpression, NextToken="")
+function _sdb_select(aws, SelectExpression, attributes, NextToken="")
 
-    query = @SymDict(SelectExpression) 
-    
+    query = @SymDict(SelectExpression)
+
     if NextToken != ""
         query[:NextToken] = NextToken
     end
@@ -157,7 +235,7 @@ function sdb_select_token(aws, SelectExpression, NextToken="")
     r = r["SelectResult"]
 
     if r == ""
-        return ([], "")
+        return (SDBItem[], "")
     end
 
     NextToken = get(r, "NextToken", "")
@@ -169,9 +247,11 @@ function sdb_select_token(aws, SelectExpression, NextToken="")
     end
 
     if ismatch(r"select itemName()", SelectExpression)
-        r = [i["Name"] for i in r]
+        r = SDBItem[utf8(i["Name"]) for i in r]
     else
-        r = Pair[i["Name"] => sdb_attributes(get(i, "Attribute", [])) for i in r]
+        r = SDBItem[utf8(i["Name"]) =>
+                    sdb_attributes(get(i, "Attribute", []), attributes)
+                    for i in r]
     end
 
     return (r, NextToken)

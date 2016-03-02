@@ -73,10 +73,21 @@ end
 
 @test sdb_get(aws, db, "key1") == Pair["a1" => "1", "a1" => "2"]
 
+
 @test Dict(sdb_select(aws, "select `a1` from $db")) ==
     Dict("key1" => Pair["a1" => "1", "a1" => "2"],
          "key2" => Pair["a1" => "21"],
          "key3" => Pair["a1" => "31"])
+
+@test Dict(sdb_select(aws, db, ["a1"])) ==
+    Dict("key1" => Pair["a1" => ["1", "2"]],
+         "key2" => Pair["a1" => "21"],
+         "key3" => Pair["a1" => "31"])
+
+@test Dict(sdb_select(aws, db, ["a1", "a2"])) ==
+    Dict("key1" => Pair["a1" => ["1", "2"], "a2" => ""],
+         "key2" => Pair["a1" => "21", "a2" => "22"],
+         "key3" => Pair["a1" => "31", "a2" => "32"])
 
 
 sdb_delete_item(aws, db, "key1")
