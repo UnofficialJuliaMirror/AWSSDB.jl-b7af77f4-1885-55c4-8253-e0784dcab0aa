@@ -77,10 +77,17 @@ end
 function sdb_put(aws, DomainName, ItemName, dict; replace=true)
 
     attrs = StringDict()
-    for (i, (a, v)) in enumerate(dict)
-        attrs["Attribute.$i.Name"] = a
-        attrs["Attribute.$i.Value"] = v
-        attrs["Attribute.$i.Replace"] = string(replace)
+    i = 1
+    for (a, v) in dict
+        if !isa(v, Vector)
+            v = [v]
+        end
+        for v in v
+            attrs["Attribute.$i.Name"] = a
+            attrs["Attribute.$i.Value"] = v
+            attrs["Attribute.$i.Replace"] = string(replace)
+            i += 1
+        end
     end
 
     sdb(aws, "PutAttributes", @SymDict(DomainName, ItemName, attrs...))
@@ -99,38 +106,37 @@ function sdb_attributes(v, order=nothing)
 
     v = isa(v, Vector) ? v : [v]
 
-    if order == nothing
-        return [SDBAttribute(utf8(i["Name"]), utf8(i["Value"])) for i in v]
-    else
+    # Build dict of attribute values...
+    d = Dict{UTF8String,Union{UTF8String,Vector{UTF8String}}}()
+    for i in v
 
-        # Build dict of attribute values...
-        d = Dict{UTF8String,Union{UTF8String,Vector{UTF8String}}}()
-        for i in v
+        # Get Attribute name and value...
+        attribute = utf8(i["Name"])
+        value = i["Value"]
 
-            # Get Attribute name and value...
-            attribute = utf8(i["Name"])
-            value = i["Value"]
-
-            # Decode base64 values...
-            if isa(value, XMLDict.XMLDictElement)
-                if get(value, :encoding, nothing) == "base64"
-                    value = base64decode(value[""])
-                end
-            end
-            value = utf8(value)
-
-            # Build vector for multi-valued attributes...
-            if haskey(d, attribute)
-                if isa(d[attribute], Vector{UTF8String})
-                    push!(d[attribute], value)
-                else
-                    d[attribute] = UTF8String[d[attribute], value]
-                end
-            else
-                d[attribute] = value
+        # Decode base64 values...
+        if isa(value, XMLDict.XMLDictElement)
+            if get(value, :encoding, nothing) == "base64"
+                value = base64decode(value[""])
             end
         end
+        value = utf8(value)
 
+        # Build vector for multi-valued attributes...
+        if haskey(d, attribute)
+            if isa(d[attribute], Vector{UTF8String})
+                push!(d[attribute], value)
+            else
+                d[attribute] = UTF8String[d[attribute], value]
+            end
+        else
+            d[attribute] = value
+        end
+    end
+
+    if order == nothing
+        return [SDBAttribute(k, v) for (k,v) in d]
+    else
         # Return ordered Vector of Pairs...
         return [SDBAttribute(a, get(d, a, utf8(""))) for a in order]
     end
