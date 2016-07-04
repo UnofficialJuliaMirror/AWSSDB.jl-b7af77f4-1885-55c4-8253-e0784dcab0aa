@@ -22,6 +22,9 @@ using AWSCore
 using XMLDict
 using SymDict
 
+using Compat
+import Compat: String
+
 
 
 # Associative get/setindex! interface...
@@ -43,38 +46,45 @@ Base.setindex!(db::SimpleDB, v, key::AbstractString) = sdb_put(db, key, v)
 
 # SDB API Interface...
 
-function sdb(aws, action, query=StringDict())
+function sdb(aws::AWSConfig, action, query::Dict)
     query["Action"] = action
     do_request(post_request(aws, "sdb", "2009-04-15", query))
 end
 
-sdb(aws, action, args::SymbolDict) = sdb(aws, action, StringDict(args))
+sdb(aws::AWSConfig, action, query::SymbolDict) = sdb(aws, action, StringDict(query))
 
-sdb(aws, action; args...) = sdb(aws, action, StringDict(args))
+sdb(aws::AWSConfig, action; args...) = sdb(aws, action, StringDict(args))
 
 
-
-function sdb_list_domains(aws)
-    sdb(aws, "ListDomains")["ListDomainsResult"]["DomainName"]
+function sdb_list_domains(aws::AWSConfig)
+    r = sdb(aws, "ListDomains")["ListDomainsResult"]
+    list = String[]
+    if r != ""
+        r = r["DomainName"]
+        for d in (isa(r, Vector) ? r : [r])
+            push!(list, d)
+        end
+    end
+    return list
 end
 
 
-function sdb_create_domain(aws, name)
+function sdb_create_domain(aws::AWSConfig, name)
     sdb(aws, "CreateDomain", DomainName = name)
 end
 
 
-function sdb_delete_domain(aws, name)
+function sdb_delete_domain(aws::AWSConfig, name)
     sdb(aws, "DeleteDomain", DomainName = name)
 end
 
 
-function sdb_delete_item(aws, DomainName, ItemName)
+function sdb_delete_item(aws::AWSConfig, DomainName, ItemName)
     sdb(aws, "DeleteAttributes", @SymDict(DomainName, ItemName))
 end
 
 
-function sdb_put(aws, DomainName, ItemName, dict; replace=true)
+function sdb_put(aws::AWSConfig, DomainName, ItemName, dict; replace=true)
 
     attrs = StringDict()
     i = 1
@@ -95,9 +105,9 @@ end
 
 sdb_put(db::SimpleDB, ItemName, dict) = sdb_put(db.aws, db.domain, ItemName, dict)
 
-
-typealias SDBAttribute Pair{UTF8String,Union{UTF8String,Vector{UTF8String}}}
-typealias SDBItem Union{UTF8String,Pair{UTF8String,Vector{SDBAttribute}}}
+typealias SDBStr Compat.UTF8String
+typealias SDBAttribute Pair{SDBStr,Union{SDBStr,Vector{SDBStr}}}
+typealias SDBItem Union{SDBStr,Pair{SDBStr,Vector{SDBAttribute}}}
 
 
 # Convert XML attribute vector "v" to Vector{Pair}...
@@ -107,11 +117,11 @@ function sdb_attributes(v, order=nothing)
     v = isa(v, Vector) ? v : [v]
 
     # Build dict of attribute values...
-    d = Dict{UTF8String,Union{UTF8String,Vector{UTF8String}}}()
+    d = Dict{SDBStr,Union{SDBStr,Vector{SDBStr}}}()
     for i in v
 
         # Get Attribute name and value...
-        attribute = utf8(i["Name"])
+        attribute = SDBStr(i["Name"])
         value = i["Value"]
 
         # Decode base64 values...
@@ -120,14 +130,14 @@ function sdb_attributes(v, order=nothing)
                 value = base64decode(value[""])
             end
         end
-        value = utf8(value)
+        value = SDBStr(value)
 
         # Build vector for multi-valued attributes...
         if haskey(d, attribute)
-            if isa(d[attribute], Vector{UTF8String})
+            if isa(d[attribute], Vector{SDBStr})
                 push!(d[attribute], value)
             else
-                d[attribute] = UTF8String[d[attribute], value]
+                d[attribute] = SDBStr[d[attribute], value]
             end
         else
             d[attribute] = value
@@ -138,12 +148,12 @@ function sdb_attributes(v, order=nothing)
         return [SDBAttribute(k, v) for (k,v) in d]
     else
         # Return ordered Vector of Pairs...
-        return [SDBAttribute(a, get(d, a, utf8(""))) for a in order]
+        return [SDBAttribute(a, get(d, a, SDBStr(""))) for a in order]
     end
 end
 
 
-function sdb_get(aws, DomainName, ItemName; attribute="")
+function sdb_get(aws::AWSConfig, DomainName, ItemName; attribute="")
 
     query = @SymDict(DomainName, ItemName)
 
@@ -168,20 +178,20 @@ type SDBSelectItr
     aws
     SelectExpression
     attributes
-    NextToken::ASCIIString
+    NextToken::String
     result
 end
 
 
-function sdb_select(aws, SelectExpression; NextToken="")
+function sdb_select(aws::AWSConfig, SelectExpression; NextToken="")
     return SDBSelectItr(aws, SelectExpression, nothing, NextToken, nothing)
 end
 
 
-function sdb_select(aws, domain::AbstractString,
-                         attributes::Vector,
-                         condition::AbstractString="";
-                         NextToken="")
+function sdb_select(aws::AWSConfig, domain::AbstractString,
+                                    attributes::Vector,
+                                    condition::AbstractString="";
+                                    NextToken="")
 
     SelectExpression = """
                        select $(join(["`$a`" for a in attributes], ", "))
@@ -196,6 +206,10 @@ end
 # Iterator interface...
 
 Base.eltype(::Type{SDBSelectItr}) = SDBItem
+if VERSION > v"0.5.0-dev+4340"
+Base.iteratorsize(::Type{SDBSelectItr}) = Base.SizeUnknown()
+end
+
 
 
 function Base.start(itr::SDBSelectItr)
@@ -229,7 +243,7 @@ function Base.done(itr::SDBSelectItr, state)
 end
 
 
-function _sdb_select(aws, SelectExpression, attributes, NextToken="")
+function _sdb_select(aws::AWSConfig, SelectExpression, attributes, NextToken="")
 
     query = @SymDict(SelectExpression)
 
@@ -253,9 +267,9 @@ function _sdb_select(aws, SelectExpression, attributes, NextToken="")
     end
 
     if ismatch(r"select itemName()", SelectExpression)
-        r = SDBItem[utf8(i["Name"]) for i in r]
+        r = SDBItem[SDBStr(i["Name"]) for i in r]
     else
-        r = SDBItem[utf8(i["Name"]) =>
+        r = SDBItem[SDBStr(i["Name"]) =>
                     sdb_attributes(get(i, "Attribute", []), attributes)
                     for i in r]
     end

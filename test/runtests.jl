@@ -55,27 +55,27 @@ while length(collect(sdb_select(aws, "select itemName() from $db"))) < 3
     sleep(1)
 end
 
-@test sdb_get(aws, db, "key1") == data["key1"]
-@test sdb_get(aws, db, "key2") == data["key2"]
-@test sdb_get(aws, db, "key3") == data["key3"]
+@test Dict(sdb_get(aws, db, "key1")) == Dict(data["key1"])
+@test Dict(sdb_get(aws, db, "key2")) == Dict(data["key2"])
+@test Dict(sdb_get(aws, db, "key3")) == Dict(data["key3"])
 
-@test simpledb["key1"] == data["key1"]
-@test simpledb["key2"] == data["key2"]
-@test simpledb["key3"] == data["key3"]
+@test Dict(simpledb["key1"]) == Dict(data["key1"])
+@test Dict(simpledb["key2"]) == Dict(data["key2"])
+@test Dict(simpledb["key3"]) == Dict(data["key3"])
 
 sdb_put(aws, db, "key1", Pair["a1" => 2], replace=false)
 
 sleep(1)
-while length(sdb_get(aws, db, "key1")) < 2
+while length(Dict(sdb_get(aws, db, "key1"))["a1"]) < 2
     println("Waiting for put...")
     sleep(1)
 end
 
-@test sdb_get(aws, db, "key1") == Pair["a1" => "1", "a1" => "2"]
+@test sdb_get(aws, db, "key1") == Pair["a1" => ["1", "2"]]
 
 
 @test Dict(sdb_select(aws, "select `a1` from $db")) ==
-    Dict("key1" => Pair["a1" => "1", "a1" => "2"],
+    Dict("key1" => Pair["a1" => ["1", "2"]],
          "key2" => Pair["a1" => "21"],
          "key3" => Pair["a1" => "31"])
 
