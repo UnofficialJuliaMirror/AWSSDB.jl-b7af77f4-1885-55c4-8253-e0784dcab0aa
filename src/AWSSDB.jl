@@ -3,7 +3,7 @@
 #
 # SDB API. See http://aws.amazon.com/documentation/simpledb/
 #
-# Copyright Sam O'Connor 2016 - All rights reserved
+# Copyright OC Technology Pty Ltd 2016 - All rights reserved
 #==============================================================================#
 
 
