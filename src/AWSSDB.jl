@@ -22,9 +22,6 @@ using AWSCore
 using XMLDict
 using SymDict
 
-using Compat
-import Compat: String
-
 
 
 # Associative get/setindex! interface...
@@ -105,9 +102,8 @@ end
 
 sdb_put(db::SimpleDB, ItemName, dict) = sdb_put(db.aws, db.domain, ItemName, dict)
 
-typealias SDBStr Compat.UTF8String
-typealias SDBAttribute Pair{SDBStr,Union{SDBStr,Vector{SDBStr}}}
-typealias SDBItem Union{SDBStr,Pair{SDBStr,Vector{SDBAttribute}}}
+typealias SDBAttribute Pair{String,Union{String,Vector{String}}}
+typealias SDBItem Union{String,Pair{String,Vector{SDBAttribute}}}
 
 
 # Convert XML attribute vector "v" to Vector{Pair}...
@@ -117,11 +113,11 @@ function sdb_attributes(v, order=nothing)
     v = isa(v, Vector) ? v : [v]
 
     # Build dict of attribute values...
-    d = Dict{SDBStr,Union{SDBStr,Vector{SDBStr}}}()
+    d = Dict{String,Union{String,Vector{String}}}()
     for i in v
 
         # Get Attribute name and value...
-        attribute = SDBStr(i["Name"])
+        attribute = String(i["Name"])
         value = i["Value"]
 
         # Decode base64 values...
@@ -130,14 +126,14 @@ function sdb_attributes(v, order=nothing)
                 value = base64decode(value[""])
             end
         end
-        value = SDBStr(value)
+        value = String(value)
 
         # Build vector for multi-valued attributes...
         if haskey(d, attribute)
-            if isa(d[attribute], Vector{SDBStr})
+            if isa(d[attribute], Vector{String})
                 push!(d[attribute], value)
             else
-                d[attribute] = SDBStr[d[attribute], value]
+                d[attribute] = String[d[attribute], value]
             end
         else
             d[attribute] = value
@@ -148,7 +144,7 @@ function sdb_attributes(v, order=nothing)
         return [SDBAttribute(k, v) for (k,v) in d]
     else
         # Return ordered Vector of Pairs...
-        return [SDBAttribute(a, get(d, a, SDBStr(""))) for a in order]
+        return [SDBAttribute(a, get(d, a, String(""))) for a in order]
     end
 end
 
@@ -267,9 +263,9 @@ function _sdb_select(aws::AWSConfig, SelectExpression, attributes, NextToken="")
     end
 
     if ismatch(r"select itemName()", SelectExpression)
-        r = SDBItem[SDBStr(i["Name"]) for i in r]
+        r = SDBItem[String(i["Name"]) for i in r]
     else
-        r = SDBItem[SDBStr(i["Name"]) =>
+        r = SDBItem[String(i["Name"]) =>
                     sdb_attributes(get(i, "Attribute", []), attributes)
                     for i in r]
     end
