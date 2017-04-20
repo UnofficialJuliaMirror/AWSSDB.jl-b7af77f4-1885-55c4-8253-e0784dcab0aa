@@ -48,9 +48,9 @@ function sdb(aws::AWSConfig, action, query::Dict)
     do_request(post_request(aws, "sdb", "2009-04-15", query))
 end
 
-sdb(aws::AWSConfig, action, query::SymbolDict) = sdb(aws, action, StringDict(query))
+sdb(aws::AWSConfig, action, query::SymbolDict) = sdb(aws, action, stringdict(query))
 
-sdb(aws::AWSConfig, action; args...) = sdb(aws, action, StringDict(args))
+sdb(aws::AWSConfig, action; args...) = sdb(aws, action, stringdict(args))
 
 
 function sdb_list_domains(aws::AWSConfig)
