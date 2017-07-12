@@ -102,8 +102,8 @@ end
 
 sdb_put(db::SimpleDB, ItemName, dict) = sdb_put(db.aws, db.domain, ItemName, dict)
 
-typealias SDBAttribute Pair{String,Union{String,Vector{String}}}
-typealias SDBItem Union{String,Pair{String,Vector{SDBAttribute}}}
+const SDBAttribute = Pair{String,Union{String,Vector{String}}}
+const SDBItem = Union{String,Pair{String,Vector{SDBAttribute}}}
 
 
 # Convert XML attribute vector "v" to Vector{Pair}...
