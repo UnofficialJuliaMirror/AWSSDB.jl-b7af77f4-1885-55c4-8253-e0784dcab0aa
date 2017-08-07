@@ -44,8 +44,7 @@ Base.setindex!(db::SimpleDB, v, key::AbstractString) = sdb_put(db, key, v)
 # SDB API Interface...
 
 function sdb(aws::AWSConfig, action, query::Dict)
-    query["Action"] = action
-    do_request(post_request(aws, "sdb", "2009-04-15", query))
+    AWSCore.Services.sdb(aws, action, query)
 end
 
 sdb(aws::AWSConfig, action, query::SymbolDict) = sdb(aws, action, stringdict(query))
